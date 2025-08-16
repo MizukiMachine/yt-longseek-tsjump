@@ -1,0 +1,22 @@
+{
+  "name": "youtube-longseek-tsjump",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build && npm run copy-static",
+    "copy-static": "cp src/manifest.json src/popup.html dist/",
+    "build:windows": "npm run build && echo 'Build completed. Copy dist folder to Windows manually.'",
+    "test": "vitest",
+    "test:run": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/chrome": "^0.0.268",
+    "@types/node": "^20.0.0",
+    "jsdom": "^26.1.0",
+    "typescript": "^5.0.0",
+    "vite": "^5.0.0",
+    "vitest": "^1.0.0"
+  }
+}
