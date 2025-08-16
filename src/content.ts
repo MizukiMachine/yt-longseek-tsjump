@@ -236,12 +236,45 @@ class JumpButtonUI {
     const jumpButton = document.createElement('button')
     jumpButton.className = 'ytls-jump-button ytp-button'
     jumpButton.textContent = 'Jump'
+    jumpButton.setAttribute('title', 'Netherlands Time Jump')
+    jumpButton.setAttribute('aria-label', 'Netherlands Time Jump')
+    
+    jumpButton.style.cssText = `
+      height: 48px;
+      width: auto;
+      min-width: 48px;
+      padding: 0 8px;
+      margin: 0;
+      display: inline-block;
+      vertical-align: top;
+      background: transparent;
+      border: none;
+      color: white;
+      cursor: pointer;
+      font-size: 12px;
+      font-family: Roboto, Arial, sans-serif;
+      font-weight: 400;
+      line-height: 48px;
+      text-align: center;
+      position: relative;
+      overflow: hidden;
+      white-space: nowrap;
+      box-sizing: border-box;
+    `
     
     jumpButton.onclick = () => {
       this.draggableCard.toggle()
     }
 
-    controlsContainer.appendChild(jumpButton)
+    const insertBeforeButton = controlsContainer.querySelector('.ytp-subtitles-button') || 
+                              controlsContainer.querySelector('.ytp-settings-button') ||
+                              controlsContainer.querySelector('.ytp-fullscreen-button')
+    
+    if (insertBeforeButton) {
+      controlsContainer.insertBefore(jumpButton, insertBeforeButton)
+    } else {
+      controlsContainer.appendChild(jumpButton)
+    }
   }
 
   private handleTimeJump(timeInput: string): void {
@@ -287,11 +320,7 @@ class DraggableCardUI {
       this.card.style.left = savedPosition.x + 'px'
       this.card.style.top = savedPosition.y + 'px'
     } else {
-      const playerRect = player.getBoundingClientRect()
-      const safeBottom = Math.max(90, playerRect.height * 0.15)
-      this.card.style.top = Math.max(20, playerRect.height - safeBottom - 100) + 'px'
-      this.card.style.right = '20px'
-      this.card.style.left = 'auto'
+      this.setInitialPositionNearJumpButton()
     }
 
     const container = document.createElement('div')
@@ -311,12 +340,18 @@ class DraggableCardUI {
     `
     
     timeInput.onkeydown = (e) => {
-      if (e.key === 'Enter' && this.onTimeJump) {
-        this.onTimeJump(timeInput.value)
+      if (e.key === 'Enter' && this.onTimeJump && this.isValidTimeInput(timeInput.value.trim())) {
+        e.preventDefault()
+        this.onTimeJump(timeInput.value.trim())
+        timeInput.value = ''
       }
       if (e.key === 'Escape') {
         this.hide()
       }
+    }
+
+    timeInput.oninput = (e) => {
+      e.stopPropagation()
     }
 
     const pinButton = document.createElement('button')
@@ -485,6 +520,64 @@ class DraggableCardUI {
     document.addEventListener('fullscreenchange', handleResize)
   }
   
+  private isValidTimeInput(input: string): boolean {
+    if (!input || input.length < 3) return false
+    
+    const colonFormat = /^(\d{1,2}):(\d{2})(?::(\d{2}))?$/
+    const noColonFormat = /^(\d{4}|\d{6})$/
+    
+    if (colonFormat.test(input)) {
+      const match = input.match(colonFormat)
+      const hours = parseInt(match![1])
+      const minutes = parseInt(match![2])
+      const seconds = parseInt(match![3] || '0')
+      return hours < 24 && minutes < 60 && seconds < 60
+    }
+    
+    if (noColonFormat.test(input)) {
+      const hours = parseInt(input.slice(0, 2))
+      const minutes = parseInt(input.slice(2, 4))
+      const seconds = input.length === 6 ? parseInt(input.slice(4, 6)) : 0
+      return hours < 24 && minutes < 60 && seconds < 60
+    }
+    
+    return false
+  }
+
+  private setInitialPositionNearJumpButton(): void {
+    if (!this.card) return
+
+    setTimeout(() => {
+      if (!this.card) return
+      
+      const player = document.querySelector('.html5-video-player')
+      const jumpButton = document.querySelector('.ytls-jump-button')
+      
+      if (player && jumpButton) {
+        const playerRect = player.getBoundingClientRect()
+        const buttonRect = jumpButton.getBoundingClientRect()
+        
+        const cardX = buttonRect.right - playerRect.left + (buttonRect.height * 0.3)
+        const cardY = buttonRect.top - playerRect.top
+        
+        const safeX = Math.max(20, Math.min(cardX, playerRect.width - 200))
+        const safeY = Math.max(20, cardY)
+        
+        this.card.style.left = safeX + 'px'
+        this.card.style.top = safeY + 'px'
+        this.card.style.right = 'auto'
+      } else {
+        const playerRect = player?.getBoundingClientRect()
+        if (playerRect) {
+          const safeBottom = Math.max(90, playerRect.height * 0.15)
+          this.card.style.top = Math.max(20, playerRect.height - safeBottom - 100) + 'px'
+          this.card.style.right = '20px'
+          this.card.style.left = 'auto'
+        }
+      }
+    }, 100)
+  }
+
   setPosition(x: number, y: number): void {
     if (!this.card) return
     
