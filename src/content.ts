@@ -315,12 +315,14 @@ class DraggableCardUI {
     this.card.style.position = 'absolute'
     this.card.style.cursor = 'move'
     
+    // 常に適切な初期位置を設定（保存位置より仕様準拠を優先）
+    this.setInitialPositionNearJumpButton()
+    
+    // ピン留めされている場合のみ保存位置を復元
     const savedPosition = this.loadPosition()
-    if (savedPosition) {
+    if (savedPosition && savedPosition.pinned) {
       this.card.style.left = savedPosition.x + 'px'
       this.card.style.top = savedPosition.y + 'px'
-    } else {
-      this.setInitialPositionNearJumpButton()
     }
 
     const container = document.createElement('div')
@@ -340,17 +342,40 @@ class DraggableCardUI {
     `
     
     timeInput.onkeydown = (e) => {
-      if (e.key === 'Enter' && this.onTimeJump && this.isValidTimeInput(timeInput.value.trim())) {
-        e.preventDefault()
-        this.onTimeJump(timeInput.value.trim())
-        timeInput.value = ''
+      // 全てのキーイベントを停止してYouTubeショートカットを無効化
+      e.stopPropagation()
+      
+      const currentValue = timeInput.value.trim()
+      
+      if (e.key === 'Enter') {
+        if (this.onTimeJump && this.isValidTimeInput(currentValue)) {
+          e.preventDefault()
+          this.onTimeJump(currentValue)
+          timeInput.value = ''
+        } else {
+          e.preventDefault()
+        }
       }
       if (e.key === 'Escape') {
+        e.preventDefault()
         this.hide()
       }
     }
 
+    timeInput.onkeyup = (e) => {
+      // keyupでも停止してYouTubeショートカットを完全に無効化
+      e.stopPropagation()
+    }
+
     timeInput.oninput = (e) => {
+      e.stopPropagation()
+    }
+
+    timeInput.onfocus = (e) => {
+      e.stopPropagation()
+    }
+
+    timeInput.onblur = (e) => {
       e.stopPropagation()
     }
 
@@ -391,6 +416,12 @@ class DraggableCardUI {
 
     this.setupDragHandlers()
     this.setupResizeHandler()
+
+    // カード表示後に時刻入力フィールドにフォーカス設定
+    setTimeout(() => {
+      timeInput.focus()
+      timeInput.select() // 既存の内容があれば選択
+    }, 50)
 
     document.onkeydown = (e) => {
       if (e.key === 'Escape' && this.card) {
@@ -557,8 +588,9 @@ class DraggableCardUI {
         const playerRect = player.getBoundingClientRect()
         const buttonRect = jumpButton.getBoundingClientRect()
         
-        const cardX = buttonRect.right - playerRect.left + (buttonRect.height * 0.3)
-        const cardY = buttonRect.top - playerRect.top
+        // Jumpボタンの上方・右寄り（コントロールバー沿い）に配置
+        const cardX = buttonRect.right - playerRect.left + 10  // ボタン右端から10px右
+        const cardY = buttonRect.top - playerRect.top - 60     // ボタンから60px上方
         
         const safeX = Math.max(20, Math.min(cardX, playerRect.width - 200))
         const safeY = Math.max(20, cardY)
