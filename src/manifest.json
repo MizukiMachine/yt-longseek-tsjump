@@ -5,7 +5,8 @@
   "description": "Long duration seek and local time jump for YouTube",
   "permissions": [
     "storage",
-    "activeTab"
+    "activeTab",
+    "commands"
   ],
   "host_permissions": [
     "https://www.youtube.com/*",
@@ -28,41 +29,41 @@
     "default_popup": "popup.html"
   },
   "commands": {
-    "seek-backward-10min": {
+    "seek-backward-60min": {
       "suggested_key": {
         "windows": "Alt+Shift+Q",
         "mac": "Alt+Shift+Q",
         "chromeos": "Alt+Shift+Q",
         "linux": "Alt+Shift+Q"
       },
-      "description": "Seek backward 10 minutes"
-    },
-    "seek-backward-60min": {
-      "suggested_key": {
-        "windows": "Alt+Shift+W",
-        "mac": "Alt+Shift+W",
-        "chromeos": "Alt+Shift+W",
-        "linux": "Alt+Shift+W"
-      },
       "description": "Seek backward 60 minutes"
     },
-    "seek-forward-10min": {
+    "seek-backward-10min": {
       "suggested_key": {
         "windows": "Alt+Shift+A",
         "mac": "Alt+Shift+A",
         "chromeos": "Alt+Shift+A",
         "linux": "Alt+Shift+A"
       },
-      "description": "Seek forward 10 minutes"
+      "description": "Seek backward 10 minutes"
     },
     "seek-forward-60min": {
+      "suggested_key": {
+        "windows": "Alt+Shift+W",
+        "mac": "Alt+Shift+W",
+        "chromeos": "Alt+Shift+W",
+        "linux": "Alt+Shift+W"
+      },
+      "description": "Seek forward 60 minutes"
+    },
+    "seek-forward-10min": {
       "suggested_key": {
         "windows": "Alt+Shift+S",
         "mac": "Alt+Shift+S",
         "chromeos": "Alt+Shift+S",
         "linux": "Alt+Shift+S"
       },
-      "description": "Seek forward 60 minutes"
+      "description": "Seek forward 10 minutes"
     }
   }
 }
