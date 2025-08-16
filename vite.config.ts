@@ -16,6 +16,8 @@ export default defineConfig({
       }
     },
     outDir: 'dist',
-    emptyOutDir: true
+    emptyOutDir: true,
+    target: 'es2020',
+    minify: false
   }
 })
