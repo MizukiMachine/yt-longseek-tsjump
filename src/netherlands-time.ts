@@ -22,3 +22,26 @@ export function adjustForYesterday(timeDifference: number, autoYesterday: boolea
   }
   return timeDifference
 }
+
+export function calculateAbsoluteTimeDifference(
+  targetSeconds: number, 
+  liveEdgeNetherlandsTime: Date
+): number {
+  const liveEdgeSeconds = liveEdgeNetherlandsTime.getHours() * 3600 + 
+                         liveEdgeNetherlandsTime.getMinutes() * 60 + 
+                         liveEdgeNetherlandsTime.getSeconds()
+  
+  // Calculate both directions from live edge
+  const forwardDiff = targetSeconds - liveEdgeSeconds
+  const backwardDiff = forwardDiff + (forwardDiff < 0 ? 24 * 3600 : -24 * 3600)
+  
+  // Choose the shortest time difference
+  return Math.abs(forwardDiff) <= Math.abs(backwardDiff) ? forwardDiff : backwardDiff
+}
+
+export function adjustAbsoluteForYesterday(timeDifference: number, autoYesterday: boolean): number {
+  if (autoYesterday && timeDifference > 0) {
+    return timeDifference - 24 * 3600
+  }
+  return timeDifference
+}

@@ -1,5 +1,11 @@
 import { describe, test, expect, vi, afterEach } from 'vitest'
-import { getCurrentNetherlandsTime, calculateTimeDifference, adjustForYesterday } from '../src/netherlands-time'
+import { 
+  getCurrentNetherlandsTime, 
+  calculateTimeDifference, 
+  adjustForYesterday, 
+  calculateAbsoluteTimeDifference, 
+  adjustAbsoluteForYesterday 
+} from '../src/netherlands-time'
 
 describe('Netherlands Time', () => {
   afterEach(() => {
@@ -77,5 +83,77 @@ describe('Netherlands Time', () => {
     
     // Should prefer forward direction for 12-hour difference
     expect(difference).toBe(12 * 3600)
+  })
+})
+
+describe('Absolute Time Calculation (Live Edge Based)', () => {
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  test('should calculate absolute time difference from live edge', () => {
+    const liveEdgeNetherlandsTime = new Date('2024-08-15T14:30:00')
+    const targetSeconds = 15 * 3600 // 15:00:00
+    
+    const difference = calculateAbsoluteTimeDifference(targetSeconds, liveEdgeNetherlandsTime)
+    
+    expect(difference).toBe(30 * 60) // 30 minutes forward from live edge
+  })
+
+  test('should calculate shortest absolute difference - backward', () => {
+    // Live edge: 14:00, Target: 06:00
+    const liveEdgeTime = new Date('2024-08-15T14:00:00')
+    const targetSeconds = 6 * 3600 // 06:00:00
+    
+    const difference = calculateAbsoluteTimeDifference(targetSeconds, liveEdgeTime)
+    
+    // Should go backward 8 hours (shorter than +16 hours forward)
+    expect(difference).toBe(-8 * 3600)
+  })
+
+  test('should calculate shortest absolute difference - forward', () => {
+    // Live edge: 06:00, Target: 14:00
+    const liveEdgeTime = new Date('2024-08-15T06:00:00')
+    const targetSeconds = 14 * 3600 // 14:00:00
+    
+    const difference = calculateAbsoluteTimeDifference(targetSeconds, liveEdgeTime)
+    
+    // Should go forward 8 hours (shorter than -16 hours backward)
+    expect(difference).toBe(8 * 3600)
+  })
+
+  test('should handle consecutive jumps to same target consistently', () => {
+    // Live edge represents "current real time" - this stays constant
+    const liveEdgeTime = new Date('2024-08-15T09:20:00')
+    const targetSeconds = 9 * 3600 // 09:00:00
+    
+    // First jump
+    const difference1 = calculateAbsoluteTimeDifference(targetSeconds, liveEdgeTime)
+    
+    // Second jump (live edge time unchanged)
+    const difference2 = calculateAbsoluteTimeDifference(targetSeconds, liveEdgeTime)
+    
+    // Should be identical - both return -20 minutes
+    expect(difference1).toBe(-20 * 60)
+    expect(difference2).toBe(-20 * 60)
+    expect(difference1).toBe(difference2)
+  })
+
+  test('should adjust absolute difference for yesterday when enabled', () => {
+    const futureDifference = 3600 // 1 hour in future from live edge
+    const autoYesterday = true
+    
+    const adjusted = adjustAbsoluteForYesterday(futureDifference, autoYesterday)
+    
+    expect(adjusted).toBe(futureDifference - 24 * 3600)
+  })
+
+  test('should not adjust absolute difference when auto-yesterday disabled', () => {
+    const futureDifference = 3600 // 1 hour in future from live edge
+    const autoYesterday = false
+    
+    const adjusted = adjustAbsoluteForYesterday(futureDifference, autoYesterday)
+    
+    expect(adjusted).toBe(futureDifference) // No change
   })
 })

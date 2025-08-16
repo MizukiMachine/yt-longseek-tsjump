@@ -64,4 +64,39 @@ export class YouTubeController {
     return document.querySelector('.ad-showing') !== null ||
            document.querySelector('.ytp-ad-player-overlay') !== null
   }
+
+  getLiveEdgeTime(): number | null {
+    const range = this.getSeekableRange()
+    return range ? range.end : null
+  }
+
+  seekToAbsoluteTime(targetTime: number): SeekResult {
+    const video = this.getVideoElement()
+    if (!video) {
+      return { success: false, clamped: false, error: 'video-not-found' }
+    }
+
+    const range = this.getSeekableRange()
+    if (!range) {
+      return { success: false, clamped: false, error: 'not-seekable' }
+    }
+
+    let clampedTime = targetTime
+    let clamped = false
+    let clampedTo: 'start' | 'end' | 'live-edge' | undefined
+
+    if (targetTime < range.start) {
+      clampedTime = range.start
+      clamped = true
+      clampedTo = 'start'
+    }
+    else if (targetTime > range.end - this.LIVE_EDGE_BUFFER) {
+      clampedTime = Math.max(range.start, range.end - this.LIVE_EDGE_BUFFER)
+      clamped = true
+      clampedTo = targetTime > range.end ? 'end' : 'live-edge'
+    }
+
+    video.currentTime = clampedTime
+    return { success: true, clamped, clampedTo }
+  }
 }

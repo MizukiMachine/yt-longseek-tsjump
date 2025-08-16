@@ -37,12 +37,46 @@ describe('YouTube Controller', () => {
   })
 
   test('should clamp seek to valid range', () => {
-    controller.seekBySeconds(3000) // Would go beyond end
-    expect(mockVideo.currentTime).toBe(3597) // 3 seconds before end
+    controller.seekBySeconds(3000)
+    expect(mockVideo.currentTime).toBe(3597)
     
     mockVideo.currentTime = 50
-    controller.seekBySeconds(-100) // Would go before start
+    controller.seekBySeconds(-100)
     expect(mockVideo.currentTime).toBe(0)
+  })
+
+  test('should get live edge time', () => {
+    const liveEdgeTime = controller.getLiveEdgeTime()
+    expect(liveEdgeTime).toBe(3600)
+  })
+
+  test('should return null for live edge when no seekable range', () => {
+    mockVideo.seekable.length = 0
+    const liveEdgeTime = controller.getLiveEdgeTime()
+    expect(liveEdgeTime).toBeNull()
+  })
+
+  test('should seek to absolute time', () => {
+    const result = controller.seekToAbsoluteTime(1500)
+    expect(result.success).toBe(true)
+    expect(result.clamped).toBe(false)
+    expect(mockVideo.currentTime).toBe(1500)
+  })
+
+  test('should clamp absolute seek to start', () => {
+    const result = controller.seekToAbsoluteTime(-100)
+    expect(result.success).toBe(true)
+    expect(result.clamped).toBe(true)
+    expect(result.clampedTo).toBe('start')
+    expect(mockVideo.currentTime).toBe(0)
+  })
+
+  test('should clamp absolute seek to live edge buffer', () => {
+    const result = controller.seekToAbsoluteTime(3599)
+    expect(result.success).toBe(true)
+    expect(result.clamped).toBe(true)
+    expect(result.clampedTo).toBe('live-edge')
+    expect(mockVideo.currentTime).toBe(3597)
   })
 
   test('should detect ads', () => {
