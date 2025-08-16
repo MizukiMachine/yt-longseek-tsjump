@@ -1,4 +1,5 @@
 import { describe, test, expect, beforeEach, vi } from 'vitest'
+import { DraggableCardUI } from '../src/draggable-card-ui'
 
 describe('Draggable Card UI', () => {
   beforeEach(() => {
@@ -95,15 +96,3 @@ describe('Draggable Card UI', () => {
   })
 })
 
-// Placeholder class - will be implemented in next step
-class DraggableCardUI {
-  constructor(private onTimeJump?: (time: string) => void) {}
-  
-  show(): void {
-    throw new Error('Not implemented')
-  }
-  
-  setPosition(x: number, y: number): void {
-    throw new Error('Not implemented')
-  }
-}
