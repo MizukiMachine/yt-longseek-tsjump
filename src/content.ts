@@ -1,7 +1,237 @@
-import { YouTubeController, SeekResult } from './youtube-controller'
-import { KeyboardShortcutHandler } from './keyboard-shortcuts'
-import { getCurrentNetherlandsTime, calculateTimeDifference, adjustForYesterday } from './netherlands-time'
-import { parseTimeToSeconds } from './time-parser'
+// Inline all dependencies for Chrome extension compatibility
+
+export interface SeekResult {
+  success: boolean
+  clamped: boolean
+  clampedTo?: 'start' | 'end' | 'live-edge'
+  error?: 'video-not-found' | 'not-seekable'
+}
+
+export class YouTubeController {
+  private readonly LIVE_EDGE_BUFFER = 3 // seconds before live edge
+
+  getVideoElement(): HTMLVideoElement | null {
+    return document.querySelector('video')
+  }
+
+  getSeekableRange(): { start: number; end: number } | null {
+    const video = this.getVideoElement()
+    if (!video || video.seekable.length === 0) {
+      return null
+    }
+    return {
+      start: video.seekable.start(0),
+      end: video.seekable.end(0)
+    }
+  }
+
+  seekBySeconds(seconds: number): void {
+    this.seekBySecondsWithResult(seconds)
+  }
+
+  seekBySecondsWithResult(seconds: number): SeekResult {
+    const video = this.getVideoElement()
+    if (!video) {
+      return { success: false, clamped: false, error: 'video-not-found' }
+    }
+
+    const range = this.getSeekableRange()
+    if (!range) {
+      return { success: false, clamped: false, error: 'not-seekable' }
+    }
+
+    const newTime = video.currentTime + seconds
+    let clampedTime = newTime
+    let clamped = false
+    let clampedTo: 'start' | 'end' | 'live-edge' | undefined
+
+    // Check if seeking before start
+    if (newTime < range.start) {
+      clampedTime = range.start
+      clamped = true
+      clampedTo = 'start'
+    }
+    // Check if seeking too close to live edge (prevent video termination)
+    else if (newTime > range.end - this.LIVE_EDGE_BUFFER) {
+      clampedTime = Math.max(range.start, range.end - this.LIVE_EDGE_BUFFER)
+      clamped = true
+      clampedTo = newTime > range.end ? 'end' : 'live-edge'
+    }
+
+    video.currentTime = clampedTime
+    return { success: true, clamped, clampedTo }
+  }
+
+  isAdPlaying(): boolean {
+    return document.querySelector('.ad-showing') !== null ||
+           document.querySelector('.ytp-ad-player-overlay') !== null
+  }
+
+  getLiveEdgeTime(): number | null {
+    const range = this.getSeekableRange()
+    return range ? range.end : null
+  }
+
+  seekToAbsoluteTime(targetTime: number): SeekResult {
+    const video = this.getVideoElement()
+    if (!video) {
+      return { success: false, clamped: false, error: 'video-not-found' }
+    }
+
+    const range = this.getSeekableRange()
+    if (!range) {
+      return { success: false, clamped: false, error: 'not-seekable' }
+    }
+
+    let clampedTime = targetTime
+    let clamped = false
+    let clampedTo: 'start' | 'end' | 'live-edge' | undefined
+
+    // Check if seeking before start
+    if (targetTime < range.start) {
+      clampedTime = range.start
+      clamped = true
+      clampedTo = 'start'
+    }
+    // Check if seeking too close to live edge (prevent video termination)
+    else if (targetTime > range.end - this.LIVE_EDGE_BUFFER) {
+      clampedTime = Math.max(range.start, range.end - this.LIVE_EDGE_BUFFER)
+      clamped = true
+      clampedTo = targetTime > range.end ? 'end' : 'live-edge'
+    }
+
+    video.currentTime = clampedTime
+    return { success: true, clamped, clampedTo }
+  }
+}
+
+export class KeyboardShortcutHandler {
+  private seekMinutes = {
+    short: 10,
+    medium: 30,
+    long: 60
+  }
+
+  constructor(private controller: YouTubeController) {}
+
+  handleCommand(command: string): void {
+    if (this.isInputFocused() || this.controller.isAdPlaying()) {
+      return
+    }
+
+    switch (command) {
+      case 'seek-backward-10min':
+        this.controller.seekBySeconds(-this.seekMinutes.short * 60)
+        break
+      case 'seek-backward-30min':
+        this.controller.seekBySeconds(-this.seekMinutes.medium * 60)
+        break
+      case 'seek-backward-60min':
+        this.controller.seekBySeconds(-this.seekMinutes.long * 60)
+        break
+      case 'seek-forward-10min':
+        this.controller.seekBySeconds(this.seekMinutes.short * 60)
+        break
+      case 'seek-forward-30min':
+        this.controller.seekBySeconds(this.seekMinutes.medium * 60)
+        break
+      case 'seek-forward-60min':
+        this.controller.seekBySeconds(this.seekMinutes.long * 60)
+        break
+    }
+  }
+
+  private isInputFocused(): boolean {
+    const activeElement = document.activeElement
+    return activeElement instanceof HTMLInputElement ||
+           activeElement instanceof HTMLTextAreaElement ||
+           activeElement?.getAttribute('contenteditable') === 'true'
+  }
+
+  updateSeekMinutes(short: number, medium: number, long: number): void {
+    this.seekMinutes = { short, medium, long }
+  }
+}
+
+export function getCurrentNetherlandsTime(): Date {
+  const netherlandsTime = new Date().toLocaleString("en-US", { timeZone: "Europe/Amsterdam" })
+  return new Date(netherlandsTime)
+}
+
+export function calculateTimeDifference(targetSeconds: number, currentNetherlandsDate: Date): number {
+  const currentNetherlandsSeconds = currentNetherlandsDate.getHours() * 3600 + 
+                                   currentNetherlandsDate.getMinutes() * 60 + 
+                                   currentNetherlandsDate.getSeconds()
+  
+  // Calculate both directions
+  const forwardDiff = targetSeconds - currentNetherlandsSeconds
+  const backwardDiff = forwardDiff + (forwardDiff < 0 ? 24 * 3600 : -24 * 3600)
+  
+  // Choose the shortest time difference
+  return Math.abs(forwardDiff) <= Math.abs(backwardDiff) ? forwardDiff : backwardDiff
+}
+
+export function adjustForYesterday(timeDifference: number, autoYesterday: boolean): number {
+  if (autoYesterday && timeDifference > 0) {
+    return timeDifference - 24 * 3600
+  }
+  return timeDifference
+}
+
+export function calculateAbsoluteTimeDifference(
+  targetSeconds: number, 
+  liveEdgeNetherlandsTime: Date
+): number {
+  const liveEdgeSeconds = liveEdgeNetherlandsTime.getHours() * 3600 + 
+                         liveEdgeNetherlandsTime.getMinutes() * 60 + 
+                         liveEdgeNetherlandsTime.getSeconds()
+  
+  // Calculate both directions from live edge
+  const forwardDiff = targetSeconds - liveEdgeSeconds
+  const backwardDiff = forwardDiff + (forwardDiff < 0 ? 24 * 3600 : -24 * 3600)
+  
+  // Choose the shortest time difference
+  return Math.abs(forwardDiff) <= Math.abs(backwardDiff) ? forwardDiff : backwardDiff
+}
+
+export function adjustAbsoluteForYesterday(timeDifference: number, autoYesterday: boolean): number {
+  if (autoYesterday && timeDifference > 0) {
+    return timeDifference - 24 * 3600
+  }
+  return timeDifference
+}
+
+export function parseTimeToSeconds(timeStr: string): number {
+  // Try colon format first: HH:mm or HH:mm:ss
+  const colonMatch = timeStr.match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?$/)
+  if (colonMatch) {
+    const hours = parseInt(colonMatch[1])
+    const minutes = parseInt(colonMatch[2])
+    const seconds = parseInt(colonMatch[3] || '0')
+
+    if (hours >= 24 || minutes >= 60 || seconds >= 60) {
+      throw new Error('Invalid time values')
+    }
+
+    return hours * 3600 + minutes * 60 + seconds
+  }
+
+  // Try non-colon format: HHmm or HHmmss
+  const noColonMatch = timeStr.match(/^(\d{2})(\d{2})(\d{2})?$/)
+  if (noColonMatch) {
+    const hours = parseInt(noColonMatch[1])
+    const minutes = parseInt(noColonMatch[2])
+    const seconds = parseInt(noColonMatch[3] || '0')
+
+    if (hours >= 24 || minutes >= 60 || seconds >= 60) {
+      throw new Error('Invalid time values')
+    }
+
+    return hours * 3600 + minutes * 60 + seconds
+  }
+
+  throw new Error('Invalid time format')
+}
 
 class FloatingUI {
   private overlay: HTMLDivElement | null = null
@@ -81,11 +311,22 @@ class FloatingUI {
 
     try {
       const targetSeconds = parseTimeToSeconds(timeInput.value.trim())
-      const currentNetherlandsTime = getCurrentNetherlandsTime()
-      let timeDifference = calculateTimeDifference(targetSeconds, currentNetherlandsTime)
-      timeDifference = adjustForYesterday(timeDifference, autoYesterday)
+      
+      // Get live edge position and corresponding Netherlands time
+      const liveEdgeTime = this.controller.getLiveEdgeTime()
+      if (liveEdgeTime === null) {
+        if (statusDiv) statusDiv.textContent = 'エラー: ライブエッジが取得できません'
+        if (statusDiv) statusDiv.style.color = '#f44336'
+        return
+      }
 
-      const result = this.controller.seekBySecondsWithResult(timeDifference)
+      const liveEdgeNetherlandsTime = getCurrentNetherlandsTime()
+      let timeDifference = calculateAbsoluteTimeDifference(targetSeconds, liveEdgeNetherlandsTime)
+      timeDifference = adjustAbsoluteForYesterday(timeDifference, autoYesterday)
+
+      // Calculate absolute target position
+      const targetTime = liveEdgeTime + timeDifference
+      const result = this.controller.seekToAbsoluteTime(targetTime)
       
       if (result.success) {
         let message = `ジャンプ完了: ${timeInput.value}`
@@ -160,8 +401,8 @@ class ContentScript {
 
   private setupKeyboardListener(): void {
     document.addEventListener('keydown', (e) => {
-      // Ctrl+Shift+T でフローティングUIをトグル
-      if (e.ctrlKey && e.shiftKey && e.key === 'T') {
+      // Ctrl+Shift+U でフローティングUIをトグル（競合の少ないキー）
+      if (e.ctrlKey && e.shiftKey && e.key === 'U') {
         // 入力フィールドにフォーカスがない場合のみ
         const activeElement = document.activeElement
         const isInputFocused = activeElement instanceof HTMLInputElement ||
@@ -188,11 +429,20 @@ class ContentScript {
   }
 
   private handleNetherlandsTimeJump(targetSeconds: number, autoYesterday: boolean): void {
-    const currentNetherlandsTime = getCurrentNetherlandsTime()
-    let timeDifference = calculateTimeDifference(targetSeconds, currentNetherlandsTime)
-    timeDifference = adjustForYesterday(timeDifference, autoYesterday)
-    
-    this.controller.seekBySeconds(timeDifference)
+    // Get live edge position and corresponding Netherlands time
+    const liveEdgeTime = this.controller.getLiveEdgeTime()
+    if (liveEdgeTime === null) {
+      console.error('Cannot get live edge time for Netherlands time jump')
+      return
+    }
+
+    const liveEdgeNetherlandsTime = getCurrentNetherlandsTime()
+    let timeDifference = calculateAbsoluteTimeDifference(targetSeconds, liveEdgeNetherlandsTime)
+    timeDifference = adjustAbsoluteForYesterday(timeDifference, autoYesterday)
+
+    // Calculate absolute target position
+    const targetTime = liveEdgeTime + timeDifference
+    this.controller.seekToAbsoluteTime(targetTime)
   }
 }
 
