@@ -1,4 +1,4 @@
-import { YouTubeController } from './youtube-controller'
+import { YouTubeController, SeekResult } from './youtube-controller'
 import { KeyboardShortcutHandler } from './keyboard-shortcuts'
 import { getCurrentNetherlandsTime, calculateTimeDifference, adjustForYesterday } from './netherlands-time'
 import { parseTimeToSeconds } from './time-parser'

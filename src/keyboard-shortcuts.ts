@@ -1,4 +1,4 @@
-import { YouTubeController } from './youtube-controller'
+import { YouTubeController, SeekResult } from './youtube-controller'
 
 export class KeyboardShortcutHandler {
   private seekMinutes = {
