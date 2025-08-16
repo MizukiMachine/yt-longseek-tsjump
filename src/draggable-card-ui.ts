@@ -22,8 +22,11 @@ export class DraggableCardUI {
       this.card.style.left = savedPosition.x + 'px'
       this.card.style.top = savedPosition.y + 'px'
     } else {
-      this.card.style.top = '20px'
-      this.card.style.left = '20px'
+      const playerRect = player.getBoundingClientRect()
+      const safeBottom = Math.max(90, playerRect.height * 0.15)
+      this.card.style.top = Math.max(20, playerRect.height - safeBottom - 100) + 'px'
+      this.card.style.right = '20px'
+      this.card.style.left = 'auto'
     }
 
     const container = document.createElement('div')
@@ -87,6 +90,7 @@ export class DraggableCardUI {
     }
 
     this.setupDragHandlers()
+    this.setupResizeHandler()
 
     document.onkeydown = (e) => {
       if (e.key === 'Escape' && this.card) {
@@ -190,6 +194,30 @@ export class DraggableCardUI {
       clearTimeout(this.fadeTimer)
       this.fadeTimer = 0
     }
+  }
+
+  private setupResizeHandler(): void {
+    const handleResize = () => {
+      if (!this.card) return
+      
+      const player = document.querySelector('.html5-video-player')
+      if (!player) return
+      
+      const playerRect = player.getBoundingClientRect()
+      const cardRect = this.card.getBoundingClientRect()
+      
+      let currentX = parseInt(this.card.style.left) || 0
+      let currentY = parseInt(this.card.style.top) || 0
+      
+      currentX = Math.max(0, Math.min(currentX, playerRect.width - cardRect.width))
+      currentY = Math.max(0, Math.min(currentY, playerRect.height - cardRect.height))
+      
+      this.card.style.left = currentX + 'px'
+      this.card.style.top = currentY + 'px'
+    }
+
+    window.addEventListener('resize', handleResize)
+    document.addEventListener('fullscreenchange', handleResize)
   }
   
   setPosition(x: number, y: number): void {
