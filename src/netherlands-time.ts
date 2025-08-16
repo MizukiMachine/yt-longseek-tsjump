@@ -7,7 +7,13 @@ export function calculateTimeDifference(targetSeconds: number, currentNetherland
   const currentNetherlandsSeconds = currentNetherlandsDate.getHours() * 3600 + 
                                    currentNetherlandsDate.getMinutes() * 60 + 
                                    currentNetherlandsDate.getSeconds()
-  return targetSeconds - currentNetherlandsSeconds
+  
+  // Calculate both directions
+  const forwardDiff = targetSeconds - currentNetherlandsSeconds
+  const backwardDiff = forwardDiff + (forwardDiff < 0 ? 24 * 3600 : -24 * 3600)
+  
+  // Choose the shortest time difference
+  return Math.abs(forwardDiff) <= Math.abs(backwardDiff) ? forwardDiff : backwardDiff
 }
 
 export function adjustForYesterday(timeDifference: number, autoYesterday: boolean): number {

@@ -45,4 +45,37 @@ describe('Netherlands Time', () => {
     expect(summerTime).toBeInstanceOf(Date)
     expect(winterTime).toBeInstanceOf(Date)
   })
+
+  test('should calculate shortest time difference - backward', () => {
+    // Current: 14:00, Target: 06:00
+    const currentNetherlandsDate = new Date('2024-08-15T14:00:00')
+    const targetSeconds = 6 * 3600 // 06:00:00
+    
+    const difference = calculateTimeDifference(targetSeconds, currentNetherlandsDate)
+    
+    // Should go backward 8 hours (shorter than +16 hours forward)
+    expect(difference).toBe(-8 * 3600)
+  })
+
+  test('should calculate shortest time difference - forward', () => {
+    // Current: 06:00, Target: 14:00  
+    const currentNetherlandsDate = new Date('2024-08-15T06:00:00')
+    const targetSeconds = 14 * 3600 // 14:00:00
+    
+    const difference = calculateTimeDifference(targetSeconds, currentNetherlandsDate)
+    
+    // Should go forward 8 hours (shorter than -16 hours backward)
+    expect(difference).toBe(8 * 3600)
+  })
+
+  test('should handle exact 12-hour difference correctly', () => {
+    // Current: 06:00, Target: 18:00 (12 hours difference)
+    const currentNetherlandsDate = new Date('2024-08-15T06:00:00')
+    const targetSeconds = 18 * 3600 // 18:00:00
+    
+    const difference = calculateTimeDifference(targetSeconds, currentNetherlandsDate)
+    
+    // Should prefer forward direction for 12-hour difference
+    expect(difference).toBe(12 * 3600)
+  })
 })
