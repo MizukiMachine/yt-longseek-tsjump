@@ -96,79 +96,163 @@ YouTubeDOMの仕様変更の対策について
 
 ## 時刻ジャンプ計算設計
 
-### 1. 根本問題の認識
-YouTubeライブ配信の時刻ジャンプで発生していた3つの問題：
-1. **60分の系統的ズレ**: 約1時間の固定オフセット
-2. **1-2分の微細ズレ**: 58-59分への不正確なジャンプ  
-3. **累積ドリフト**: ジャンプ毎に10秒ずつズレが蓄積
+### 1. 基本設計思想
 
-**根本原因**: 動画の再生時間軸（`video.currentTime`）と現実世界の時刻（タイムゾーン）を直接演算していたこと
+**時刻ジャンプの本質**：
+YouTubeDVR配信において、ユーザーが指定したタイムゾーン時刻に対応する動画位置へのジャンプを実現する。
 
-### 2. 正しい設計思想
-**線形変換によるキャリブレーション方式**を採用：
+### 2. 核心となる計算ロジック ⚠️ **重要：この計算式を絶対に間違えない**
 
-```
-wall_clock_seconds ≈ media_time_seconds + C
-```
+#### **正しい計算フロー**
+```typescript
+// Step 1: 現在時刻と目標時刻の差を計算
+const nowEpoch = Date.now() / 1000
+const targetEpoch = parseTimezoneEpoch(userInput, now, timezone)
+const timeDelta = nowEpoch - targetEpoch
 
-- `C`: 固定オフセット定数（キャリブレーションで測定）
-- `L`: ライブ配信レイテンシ（10-30秒）
+// Step 2: DVR最新位置から時間差分だけ巻き戻す
+const targetMediaTime = video.seekable.end(0) - timeDelta
 
-### 3. 実装ステップ
-
-#### Step 1: キャリブレーション（初回のみ）
-```javascript
-// 6秒間、200ms間隔でサンプリング
-C = median((now_epoch - L) - seekable.end(0))
+// Step 3: DVR範囲内にクランプしてシーク
+video.currentTime = Math.max(video.seekable.start(0), targetMediaTime)
 ```
 
-#### Step 2: UTC統一計算
-```javascript
-// オランダ時刻を絶対時刻（epoch秒）に変換
-target_epoch = convertNLTimeToEpoch(targetTime, 'Europe/Amsterdam')
+#### **計算の意味**
+- `timeDelta`: 現在時刻から目標時刻までの時間差（秒）
+- `video.seekable.end(0)`: DVR配信の最新位置（ライブエッジ）
+- `targetMediaTime`: 動画タイムライン上の目標位置
 
-// 未来の場合は前日に調整
-if (target_epoch > now_epoch) target_epoch -= 86400
+#### **具体例**
+```
+現在時刻: 2025-08-17 11:05 Amsterdam (epoch: 1755421538)
+目標時刻: 2025-08-17 00:00 Amsterdam (epoch: 1755381600)
+時間差: 1755421538 - 1755381600 = 39938秒 ≈ 11.1時間
+
+DVR最新位置: 50000秒（動画開始から約13.9時間）
+目標位置: 50000 - 39938 = 10062秒（動画開始から約2.8時間）
+→ 11時間前の動画位置にジャンプ
 ```
 
-#### Step 3: メディア時間変換
-```javascript
-target_media = target_epoch - C
+### 3. 実装コンポーネント
+
+#### **タイムゾーン変換**
+```typescript
+export function parseTimezoneEpoch(
+  timeString: string, 
+  baseDate: Date, 
+  timezone: string
+): number
+```
+- ユーザー入力時刻を指定タイムゾーンでのepoch秒に変換
+- DST（夏時間）を自動考慮
+- 今日/昨日の適切な日付選択
+
+#### **DVR範囲管理**
+```typescript
+async function pickEpochWithinDVR(
+  timeString: string, 
+  video: HTMLVideoElement, 
+  timezone: string
+): Promise<{ok: boolean, targetEpoch?: number}>
+```
+- 目標時刻がDVR範囲内か判定
+- 範囲外の場合は適切なフォールバック処理
+
+#### **メイン関数**
+```typescript
+export async function jumpToTimezoneTime(
+  video: HTMLVideoElement,
+  targetTime: string,
+  timezone: string
+): Promise<TimeJumpResult>
 ```
 
-#### Step 4: DVR範囲クランプ + シーク
-```javascript
-target_media = Math.min(Math.max(target_media, seekable.start(0)), seekable.end(0) - 1)
-video.currentTime = target_media
-```
+### 4. エラーハンドリング戦略
 
-#### Step 5: 微補正（1回のみ）
-```javascript
-// シーク完了後の誤差測定
-error = target_epoch - (video.currentTime + C)
-if (Math.abs(error) > 1.5) {
-  video.currentTime += error  // 追加補正
+#### **00:00特別仕様（距離ベース丸め処理）** ⚠️ **重要な境界時刻処理**
+
+**00:00は特別な時刻**として、DVR範囲外の場合は最も近い境界にジャンプ：
+
+```typescript
+function handle00TimeJump(
+  video: HTMLVideoElement, 
+  targetEpoch: number
+): number {
+  const dvrStart = video.seekable.start(0)
+  const dvrEnd = video.seekable.end(0)
+  const nowEpoch = Date.now() / 1000
+  
+  // DVR範囲をepoch時刻に変換（直接計算方式）
+  const dvrDuration = dvrEnd - dvrStart
+  const dvrStartEpoch = nowEpoch - dvrDuration
+  const dvrEndEpoch = nowEpoch
+  
+  if (targetEpoch >= dvrStartEpoch && targetEpoch <= dvrEndEpoch) {
+    // Case 1: 範囲内 - 正確にジャンプ
+    const timeDelta = nowEpoch - targetEpoch
+    return dvrEnd - timeDelta
+  } else {
+    // Case 2: 範囲外 - 距離による丸め処理
+    const distToStart = Math.abs(targetEpoch - dvrStartEpoch)
+    const distToEnd = Math.abs(targetEpoch - dvrEndEpoch)
+    
+    if (distToStart < distToEnd) {
+      return dvrStart  // 一番過去にジャンプ
+    } else {
+      return dvrEnd    // 一番未来（現在）にジャンプ
+    }
+  }
 }
 ```
 
-### 4. ドリフト対策
-- **定数Cは固定使用**: 毎回再計算しない
-- **再キャリブレーション条件**: 
-  - ライブ端近く（`end - currentTime < 5s`）
-  - 5-10分間隔の定期実行
-  - 中央値/移動平均による安定化
+**処理パターン**:
+- **理想**: DVR範囲内に00:00が存在 → 正確な位置にジャンプ
+- **過去寄り**: 00:00がDVR開始より過去で近い → DVR開始位置にジャンプ  
+- **未来寄り**: 00:00がDVR終端より未来で近い → DVR終端（現在）にジャンプ
 
-### 5. タイムゾーン処理
-- **DST対応**: `Intl.DateTimeFormat`で正確なオフセット取得
-- **ISO文字列生成**: `YYYY-MM-DDTHH:mm:ss+02:00`形式
-- **絶対時刻変換**: `Date.parse()`でepoch秒に統一
+#### **一般的な範囲外時刻の処理**
+- **範囲内**: 正確な時刻ジャンプ実行
+- **範囲外（過去）**: DVR開始位置にジャンプ
+- **範囲外（未来）**: 現在のライブエッジにジャンプ
+- **無効入力**: エラーメッセージ表示
 
-### 6. エラー処理
-- DVR範囲外ジャンプの制限
-- `seekable`範囲が無効な場合の処理
-- レイテンシ取得失敗時のフォールバック（L=0）
+#### **境界ケース**
+- DVR無効動画での適切なエラー
+- タイムゾーン変換エラーのハンドリング
+- ネットワーク遅延による不安定性の吸収
 
-この設計により、従来の3つの問題すべてが解決される。
+### 5. テスト設計方針
+
+#### **単体テスト**
+- `parseTimezoneEpoch`: 各タイムゾーンでの正確性
+- `pickEpochWithinDVR`: 範囲判定ロジック
+- 計算フローの数値的正確性
+
+#### **統合テスト**
+- 完全な時刻ジャンプフローの検証
+- エラーケースの包括的テスト
+- 異なるDVR状況での動作確認
+
+### 6. パフォーマンス特性
+
+- **時刻変換**: <10ms（同期処理）
+- **DVR範囲チェック**: <5ms
+- **シーク実行**: ブラウザ依存（通常100-500ms）
+- **メモリ使用量**: 最小限（一時変数のみ）
+
+### 7. デバッグ指針
+
+計算ロジックに問題がある場合、以下を確認：
+1. `timeDelta`の符号と値（現在-目標の差）
+2. `video.seekable.end(0)`の妥当性
+3. DVR範囲内の目標時刻の存在確認
+4. タイムゾーン変換の正確性
+
+**❌ 絶対に避けるべき間違った計算**：
+```typescript
+// これは意味不明な計算 - 絶対に使用禁止
+targetMediaTime = targetEpoch - calibratedOffset
+```
 
 ## 開発・メンテナンス方針
 
